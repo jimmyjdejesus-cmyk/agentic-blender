@@ -1,0 +1,22 @@
+{
+  "name": "dsh-plugin-blender",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness (DSH) native Cordis plugin for autonomous Blender 3D CAD, 3D printing prep, and Langmuir CNC machining",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/index.test.js"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "cordis",
+    "deepseek-harness",
+    "blender",
+    "cad",
+    "3d-printing",
+    "cnc",
+    "langmuir"
+  ],
+  "author": "Jimmy De Jesus",
+  "license": "MIT"
+}
