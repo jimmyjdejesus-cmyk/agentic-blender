@@ -7,7 +7,12 @@ import os
 import argparse
 import json
 from .bridge.client import BlenderBridgeClient
-from .cad.parametric import generate_modular_dispenser_code, generate_cnc_bracket_code
+from .cad.parametric import (
+    generate_modular_dispenser_code,
+    generate_cnc_bracket_code,
+    generate_threaded_lip_code,
+    generate_snap_fit_joint_code,
+)
 from .print3d.validator import analyze_mesh_topology
 from .cnc.post_processor import format_firecontrol_plasma_gcode
 from .cnc.validator import validate_firecontrol_gcode
@@ -27,7 +32,7 @@ def main():
 
     # 3. Prompt / CAD command
     cad_parser = subparsers.add_parser("cad", help="Generate parametric CAD models")
-    cad_parser.add_argument("--type", choices=["dispenser", "bracket"], default="dispenser", help="CAD archetype")
+    cad_parser.add_argument("--type", choices=["dispenser", "bracket", "threaded_lip", "snap_fit_joint"], default="dispenser", help="CAD archetype")
     cad_parser.add_argument("--shape", choices=["cylinder", "hexagon", "rectangle"], default="cylinder", help="Base shape")
     cad_parser.add_argument("--execute", action="store_true", help="Execute directly in live Blender session")
     cad_parser.add_argument("--out-script", type=str, help="Save generated script to file")
@@ -65,6 +70,10 @@ def main():
     elif args.command == "cad":
         if args.type == "dispenser":
             code = generate_modular_dispenser_code(base_shape=args.shape)
+        elif args.type == "threaded_lip":
+            code = generate_threaded_lip_code()
+        elif args.type == "snap_fit_joint":
+            code = generate_snap_fit_joint_code()
         else:
             code = generate_cnc_bracket_code()
 

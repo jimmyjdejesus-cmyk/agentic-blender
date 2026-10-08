@@ -1,10 +1,248 @@
 """
 Parametric CAD Generator for Agentic Blender.
 Produces robust Blender Python code for mechanical assemblies, modular canisters,
-calibrated dosing holders, dry filter bases, and Langmuir CNC brackets.
+procedural screw threads, snap-fit cantilever joints, calibrated dosing holders,
+dry filter bases, and Langmuir CNC brackets.
 """
 
 import math
+
+def generate_threaded_lip_code(
+    radius=1.8,
+    height=0.5,
+    pitch=0.2,
+    thread_depth=0.08,
+    is_outer=True,
+    turns=3.0,
+    segments_per_turn=32
+):
+    """
+    Generates Blender Python code for a procedural screw thread generator with
+    configurable pitch, thread depth, outer/inner threading, and turns for modular lids/canisters.
+    """
+    thread_type = "Outer" if is_outer else "Inner"
+    return f'''import bpy, bmesh, math
+
+if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+    bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+def get_or_create_mat(name, color, roughness=0.3, metallic=0.0):
+    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get('Principled BSDF')
+    if bsdf:
+        bsdf.inputs['Base Color'].default_value = color
+        bsdf.inputs['Roughness'].default_value = roughness
+        bsdf.inputs['Metallic'].default_value = metallic
+    return mat
+
+mat_thread = get_or_create_mat('Thread_Material', (0.15, 0.5, 0.8, 1.0), roughness=0.3, metallic=0.7)
+
+# Parameters
+radius = {radius}
+height = {height}
+pitch = {pitch}
+thread_depth = {thread_depth}
+is_outer = {is_outer}
+turns = {turns}
+segments_per_turn = {segments_per_turn}
+
+# Base cylinder collar
+bpy.ops.mesh.primitive_cylinder_add(
+    vertices=segments_per_turn,
+    radius=radius,
+    depth=height,
+    location=(0, 0, height / 2.0)
+)
+base_collar = bpy.context.active_object
+base_collar.name = "Threaded_Lip_Collar_{thread_type}"
+base_collar.data.materials.append(mat_thread)
+
+# Procedural Thread Helix Geometry using BMesh
+mesh = bpy.data.meshes.new("Thread_Helix_Mesh")
+thread_obj = bpy.data.objects.new("Threaded_Lip_{thread_type}", mesh)
+bpy.context.collection.objects.link(thread_obj)
+bpy.context.view_layer.objects.active = thread_obj
+thread_obj.data.materials.append(mat_thread)
+
+bm = bmesh.new()
+
+total_steps = int(turns * segments_per_turn)
+depth_sign = 1.0 if is_outer else -1.0
+
+# Generate helical vertices and quad faces along spiral
+prev_verts = None
+for i in range(total_steps + 1):
+    angle = (i / segments_per_turn) * 2.0 * math.pi
+    z = (i / total_steps) * min(height, turns * pitch)
+
+    half_pitch = pitch * 0.4
+
+    r_base = radius
+    r_crest = radius + (depth_sign * thread_depth)
+
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+
+    v0 = bm.verts.new((r_base * cos_a, r_base * sin_a, max(0.0, z - half_pitch)))
+    v1 = bm.verts.new((r_crest * cos_a, r_crest * sin_a, z))
+    v2 = bm.verts.new((r_base * cos_a, r_base * sin_a, min(height, z + half_pitch)))
+
+    curr_verts = [v0, v1, v2]
+    if prev_verts:
+        bm.faces.new([prev_verts[0], curr_verts[0], curr_verts[1], prev_verts[1]])
+        bm.faces.new([prev_verts[1], curr_verts[1], curr_verts[2], prev_verts[2]])
+    prev_verts = curr_verts
+
+bm.to_mesh(mesh)
+bm.free()
+
+# Join base collar and helix geometry
+base_collar.select_set(True)
+thread_obj.select_set(True)
+bpy.context.view_layer.objects.active = base_collar
+bpy.ops.object.join()
+base_collar.name = "Threaded_Lip_{thread_type}"
+
+bpy.ops.object.camera_add(location=(5.0, -5.0, 4.0), rotation=(math.radians(60), 0, math.radians(45)))
+bpy.context.scene.camera = bpy.context.active_object
+bpy.ops.object.light_add(type='SUN', location=(3, -3, 6))
+print(f"[CAD Generator] Procedural {thread_type} screw thread generated with pitch={{pitch}}, depth={{thread_depth}}.")
+'''
+
+def generate_snap_fit_joint_code(
+    radius=1.8,
+    tab_count=4,
+    tab_width=0.3,
+    tab_height=0.5,
+    cantilever_thickness=0.08,
+    latch_depth=0.05,
+    clearance=0.02
+):
+    """
+    Generates Blender Python code for a snap-fit cantilever joint generator
+    with interlocking male and female snap tabs for modular canisters.
+    """
+    return f'''import bpy, bmesh, math
+
+if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+    bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+def get_or_create_mat(name, color, roughness=0.3, metallic=0.0):
+    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get('Principled BSDF')
+    if bsdf:
+        bsdf.inputs['Base Color'].default_value = color
+        bsdf.inputs['Roughness'].default_value = roughness
+        bsdf.inputs['Metallic'].default_value = metallic
+    return mat
+
+mat_male = get_or_create_mat('Snap_Male_Mat', (0.2, 0.7, 0.3, 1.0), roughness=0.3)
+mat_female = get_or_create_mat('Snap_Female_Mat', (0.8, 0.3, 0.2, 1.0), roughness=0.3)
+
+radius = {radius}
+tab_count = {tab_count}
+tab_width = {tab_width}
+tab_height = {tab_height}
+cantilever_thickness = {cantilever_thickness}
+latch_depth = {latch_depth}
+clearance = {clearance}
+
+# 1. Male Component (Canister Rim with Cantilever Snap Tabs)
+bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=0.6, location=(0, 0, 0.3))
+male_body = bpy.context.active_object
+male_body.name = "Snap_Fit_Male"
+male_body.data.materials.append(mat_male)
+
+for i in range(tab_count):
+    angle = i * (2.0 * math.pi / tab_count)
+    rx = radius * math.cos(angle)
+    ry = radius * math.sin(angle)
+
+    # Cantilever Arm
+    bpy.ops.mesh.primitive_cube_add(
+        size=1.0,
+        location=(rx, ry, 0.6 + tab_height / 2.0)
+    )
+    tab = bpy.context.active_object
+    tab.scale = (cantilever_thickness, tab_width, tab_height)
+    tab.rotation_euler = (0, 0, angle)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+    tab.name = f"Snap_Tab_Male_{{i}}"
+    tab.data.materials.append(mat_male)
+
+    # Interlocking Tapered Latch / Hook Head
+    hook_r = radius + latch_depth
+    hx = hook_r * math.cos(angle)
+    hy = hook_r * math.sin(angle)
+    bpy.ops.mesh.primitive_cube_add(
+        size=1.0,
+        location=(hx, hy, 0.6 + tab_height - (latch_depth / 2.0))
+    )
+    hook = bpy.context.active_object
+    hook.scale = (latch_depth * 1.5, tab_width, latch_depth * 1.2)
+    hook.rotation_euler = (0, 0, angle)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+    hook.name = f"Snap_Latch_Male_{{i}}"
+    hook.data.materials.append(mat_male)
+
+# 2. Female Component (Interlocking Cap with Mating Recesses)
+female_y = radius * 2.5
+bpy.ops.mesh.primitive_cylinder_add(
+    radius=radius + cantilever_thickness + clearance + 0.1,
+    depth=0.8,
+    location=(0, female_y, 0.4)
+)
+female_body = bpy.context.active_object
+female_body.name = "Snap_Fit_Female"
+female_body.data.materials.append(mat_female)
+
+# Inner mating cavity with interlocking retaining lip/recesses
+bpy.ops.mesh.primitive_cylinder_add(
+    radius=radius + clearance,
+    depth=0.7,
+    location=(0, female_y, 0.35)
+)
+female_core = bpy.context.active_object
+fbool = female_body.modifiers.new(name="MatingCavity", type='BOOLEAN')
+fbool.object = female_core
+fbool.operation = 'DIFFERENCE'
+bpy.context.view_layer.objects.active = female_body
+bpy.ops.object.modifier_apply(modifier="MatingCavity")
+bpy.data.objects.remove(female_core, do_unlink=True)
+
+# Create female interlocking slots for snap tabs
+for i in range(tab_count):
+    angle = i * (2.0 * math.pi / tab_count)
+    rx = (radius + cantilever_thickness) * math.cos(angle)
+    ry = female_y + (radius + cantilever_thickness) * math.sin(angle)
+
+    bpy.ops.mesh.primitive_cube_add(
+        size=1.0,
+        location=(rx, ry, 0.5)
+    )
+    recess = bpy.context.active_object
+    recess.scale = (cantilever_thickness + clearance * 2, tab_width + clearance * 2, latch_depth + clearance)
+    recess.rotation_euler = (0, 0, angle)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+
+    rbool = female_body.modifiers.new(name=f"Slot_{{i}}", type='BOOLEAN')
+    rbool.object = recess
+    rbool.operation = 'DIFFERENCE'
+    bpy.context.view_layer.objects.active = female_body
+    bpy.ops.object.modifier_apply(modifier=f"Slot_{{i}}")
+    bpy.data.objects.remove(recess, do_unlink=True)
+
+bpy.ops.object.camera_add(location=(7.0, -7.0, 6.0), rotation=(math.radians(60), 0, math.radians(45)))
+bpy.context.scene.camera = bpy.context.active_object
+bpy.ops.object.light_add(type='SUN', location=(3, -3, 8))
+print(f"[CAD Generator] Interlocking snap-fit cantilever joint created with {{tab_count}} tabs.")
+'''
 
 def generate_modular_dispenser_code(
     base_shape="cylinder",  # "cylinder", "hexagon", "rectangle"

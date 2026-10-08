@@ -6,7 +6,12 @@ Links Python agent pipelines with DSH Cordis harness plugins.
 import json
 import os
 from ..bridge.client import BlenderBridgeClient
-from ..cad.parametric import generate_modular_dispenser_code, generate_cnc_bracket_code
+from ..cad.parametric import (
+    generate_modular_dispenser_code,
+    generate_cnc_bracket_code,
+    generate_threaded_lip_code,
+    generate_snap_fit_joint_code,
+)
 from ..print3d.validator import analyze_mesh_topology
 from ..cnc.post_processor import format_firecontrol_plasma_gcode
 
@@ -42,6 +47,19 @@ class DshBlenderAdapter:
             shape = params.get("baseShape", "cylinder")
             if archetype == "dispenser":
                 code = generate_modular_dispenser_code(base_shape=shape)
+            elif archetype == "threaded_lip":
+                code = generate_threaded_lip_code(
+                    radius=params.get("radius", 1.8),
+                    height=params.get("height", 0.5),
+                    pitch=params.get("pitch", 0.2),
+                    thread_depth=params.get("threadDepth", 0.08),
+                    is_outer=params.get("isOuter", True)
+                )
+            elif archetype == "snap_fit_joint":
+                code = generate_snap_fit_joint_code(
+                    radius=params.get("radius", 1.8),
+                    tab_count=params.get("tabCount", 4)
+                )
             else:
                 code = generate_cnc_bracket_code()
                 

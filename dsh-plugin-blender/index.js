@@ -106,9 +106,191 @@ class BlenderService {
     }
   }
 
-  generateCadScript(options = {}) {
+  generateThreadedLipScript(options = {}) {
     const {
-      type = 'dispenser',
+      radius = 1.8,
+      height = 0.5,
+      pitch = 0.2,
+      threadDepth = 0.08,
+      isOuter = true,
+      turns = 3.0,
+      segmentsPerTurn = 32,
+    } = options;
+
+    const threadType = isOuter ? 'Outer' : 'Inner';
+    const depthSign = isOuter ? 1.0 : -1.0;
+
+    return `import bpy, bmesh, math
+
+if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+    bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+mat = bpy.data.materials.new(name='Thread_Mat')
+mat.use_nodes = True
+
+radius = ${radius}
+height = ${height}
+pitch = ${pitch}
+thread_depth = ${threadDepth}
+is_outer = ${isOuter ? 'True' : 'False'}
+turns = ${turns}
+segments_per_turn = ${segmentsPerTurn}
+
+# Base Collar
+bpy.ops.mesh.primitive_cylinder_add(vertices=${segmentsPerTurn}, radius=${radius}, depth=${height}, location=(0, 0, ${height / 2}))
+base_collar = bpy.context.active_object
+base_collar.name = "Threaded_Lip_Collar_${threadType}"
+
+# Procedural Thread Helix
+mesh = bpy.data.meshes.new("Thread_Helix_Mesh")
+thread_obj = bpy.data.objects.new("Threaded_Lip_${threadType}", mesh)
+bpy.context.collection.objects.link(thread_obj)
+bpy.context.view_layer.objects.active = thread_obj
+
+bm = bmesh.new()
+total_steps = int(turns * segments_per_turn)
+depth_sign = ${depthSign}
+
+prev_verts = None
+for i in range(total_steps + 1):
+    angle = (i / segments_per_turn) * 2.0 * math.pi
+    z = (i / total_steps) * min(height, turns * pitch)
+    half_pitch = pitch * 0.4
+    r_base = radius
+    r_crest = radius + (depth_sign * thread_depth)
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+
+    v0 = bm.verts.new((r_base * cos_a, r_base * sin_a, max(0.0, z - half_pitch)))
+    v1 = bm.verts.new((r_crest * cos_a, r_crest * sin_a, z))
+    v2 = bm.verts.new((r_base * cos_a, r_base * sin_a, min(height, z + half_pitch)))
+
+    curr_verts = [v0, v1, v2]
+    if prev_verts:
+        bm.faces.new([prev_verts[0], curr_verts[0], curr_verts[1], prev_verts[1]])
+        bm.faces.new([prev_verts[1], curr_verts[1], curr_verts[2], prev_verts[2]])
+    prev_verts = curr_verts
+
+bm.to_mesh(mesh)
+bm.free()
+
+base_collar.select_set(True)
+thread_obj.select_set(True)
+bpy.context.view_layer.objects.active = base_collar
+bpy.ops.object.join()
+base_collar.name = "Threaded_Lip_${threadType}"
+
+bpy.ops.object.camera_add(location=(5.0, -5.0, 4.0), rotation=(math.radians(60), 0, math.radians(45)))
+bpy.context.scene.camera = bpy.context.active_object
+bpy.ops.object.light_add(type='SUN', location=(3, -3, 6))
+print("[DSH CAD] Procedural ${threadType} screw thread generated.")
+`;
+  }
+
+  generateSnapFitJointScript(options = {}) {
+    const {
+      radius = 1.8,
+      tabCount = 4,
+      tabWidth = 0.3,
+      tabHeight = 0.5,
+      cantileverThickness = 0.08,
+      latchDepth = 0.05,
+      clearance = 0.02,
+    } = options;
+
+    return `import bpy, bmesh, math
+
+if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+    bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+radius = ${radius}
+tab_count = ${tabCount}
+tab_width = ${tabWidth}
+tab_height = ${tabHeight}
+cantilever_thickness = ${cantileverThickness}
+latch_depth = ${latchDepth}
+clearance = ${clearance}
+
+# 1. Male Component
+bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=0.6, location=(0, 0, 0.3))
+male_body = bpy.context.active_object
+male_body.name = "Snap_Fit_Male"
+
+for i in range(tab_count):
+    angle = i * (2.0 * math.pi / tab_count)
+    rx = radius * math.cos(angle)
+    ry = radius * math.sin(angle)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(rx, ry, 0.6 + tab_height / 2.0))
+    tab = bpy.context.active_object
+    tab.scale = (cantilever_thickness, tab_width, tab_height)
+    tab.rotation_euler = (0, 0, angle)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+    tab.name = f"Snap_Tab_Male_{i}"
+
+    hook_r = radius + latch_depth
+    hx = hook_r * math.cos(angle)
+    hy = hook_r * math.sin(angle)
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(hx, hy, 0.6 + tab_height - (latch_depth / 2.0)))
+    hook = bpy.context.active_object
+    hook.scale = (latch_depth * 1.5, tab_width, latch_depth * 1.2)
+    hook.rotation_euler = (0, 0, angle)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+    hook.name = f"Snap_Latch_Male_{i}"
+
+# 2. Female Component
+female_y = radius * 2.5
+bpy.ops.mesh.primitive_cylinder_add(radius=radius + cantilever_thickness + clearance + 0.1, depth=0.8, location=(0, female_y, 0.4))
+female_body = bpy.context.active_object
+female_body.name = "Snap_Fit_Female"
+
+bpy.ops.mesh.primitive_cylinder_add(radius=radius + clearance, depth=0.7, location=(0, female_y, 0.35))
+female_core = bpy.context.active_object
+fbool = female_body.modifiers.new(name="MatingCavity", type='BOOLEAN')
+fbool.object = female_core
+fbool.operation = 'DIFFERENCE'
+bpy.context.view_layer.objects.active = female_body
+bpy.ops.object.modifier_apply(modifier="MatingCavity")
+bpy.data.objects.remove(female_core, do_unlink=True)
+
+for i in range(tab_count):
+    angle = i * (2.0 * math.pi / tab_count)
+    rx = (radius + cantilever_thickness) * math.cos(angle)
+    ry = female_y + (radius + cantilever_thickness) * math.sin(angle)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(rx, ry, 0.5))
+    recess = bpy.context.active_object
+    recess.scale = (cantilever_thickness + clearance * 2, tab_width + clearance * 2, latch_depth + clearance)
+    recess.rotation_euler = (0, 0, angle)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+
+    rbool = female_body.modifiers.new(name=f"Slot_{i}", type='BOOLEAN')
+    rbool.object = recess
+    rbool.operation = 'DIFFERENCE'
+    bpy.context.view_layer.objects.active = female_body
+    bpy.ops.object.modifier_apply(modifier=f"Slot_{i}")
+    bpy.data.objects.remove(recess, do_unlink=True)
+
+bpy.ops.object.camera_add(location=(7.0, -7.0, 6.0), rotation=(math.radians(60), 0, math.radians(45)))
+bpy.context.scene.camera = bpy.context.active_object
+bpy.ops.object.light_add(type='SUN', location=(3, -3, 8))
+print(f"[DSH CAD] Interlocking snap-fit cantilever joint created with {tab_count} tabs.")
+`;
+  }
+
+  generateCadScript(options = {}) {
+    if (options.type === 'threaded_lip') {
+      return this.generateThreadedLipScript(options);
+    }
+    if (options.type === 'snap_fit_joint') {
+      return this.generateSnapFitJointScript(options);
+    }
+
+    const {
       baseShape = 'cylinder',
       radius = 1.8,
       height = 4.0,
@@ -316,12 +498,16 @@ function apply(ctx, config) {
     },
     {
       name: 'blender_cad_generate',
-      description: 'Generate parametric 3D CAD models (modular canisters, filters, holders, CNC brackets)',
+      description: 'Generate parametric 3D CAD models (modular canisters, filters, holders, screw threads, snap-fit joints, CNC brackets)',
       parameters: {
-        type: { type: 'string', enum: ['dispenser', 'bracket'], default: 'dispenser' },
+        type: { type: 'string', enum: ['dispenser', 'bracket', 'threaded_lip', 'snap_fit_joint'], default: 'dispenser' },
         baseShape: { type: 'string', enum: ['cylinder', 'hexagon', 'rectangle'], default: 'cylinder' },
         radius: { type: 'number', default: 1.8 },
         height: { type: 'number', default: 4.0 },
+        pitch: { type: 'number', default: 0.2 },
+        threadDepth: { type: 'number', default: 0.08 },
+        isOuter: { type: 'boolean', default: true },
+        tabCount: { type: 'number', default: 4 },
         executeLive: { type: 'boolean', default: false },
       },
       execute: async (params) => {

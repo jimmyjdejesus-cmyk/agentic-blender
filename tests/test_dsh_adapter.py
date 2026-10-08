@@ -9,10 +9,22 @@ def test_dsh_adapter_init():
 def test_dsh_adapter_tool_dispatch():
     adapter = DshBlenderAdapter()
     
-    # Tool: blender_cad_generate
+    # Tool: blender_cad_generate (dispenser)
     res_cad = adapter.dispatch_tool("blender_cad_generate", {"type": "dispenser", "baseShape": "hexagon"})
     assert "code" in res_cad
     assert "vertices=6" in res_cad["code"]
+
+    # Tool: blender_cad_generate (threaded_lip)
+    res_thread = adapter.dispatch_tool("blender_cad_generate", {"type": "threaded_lip", "pitch": 0.25, "isOuter": True})
+    assert "code" in res_thread
+    assert "Threaded_Lip_Outer" in res_thread["code"]
+    assert "pitch = 0.25" in res_thread["code"]
+
+    # Tool: blender_cad_generate (snap_fit_joint)
+    res_snap = adapter.dispatch_tool("blender_cad_generate", {"type": "snap_fit_joint", "tabCount": 6})
+    assert "code" in res_snap
+    assert "Snap_Fit_Male" in res_snap["code"]
+    assert "tab_count = 6" in res_snap["code"]
 
     # Tool: blender_3dprint_preflight
     res_print = adapter.dispatch_tool("blender_3dprint_preflight", {

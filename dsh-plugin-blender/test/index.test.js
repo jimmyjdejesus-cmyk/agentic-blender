@@ -34,6 +34,18 @@ test('3. Parametric CAD script generation', () => {
   // Hexagon test
   const hexScript = service.generateCadScript({ baseShape: 'hexagon' });
   assert.ok(hexScript.includes('vertices=6'));
+
+  // Procedural Threaded Lip test
+  const threadScript = service.generateCadScript({ type: 'threaded_lip', radius: 2.0, pitch: 0.25, isOuter: true });
+  assert.ok(threadScript.includes('Threaded_Lip_Outer'));
+  assert.ok(threadScript.includes('pitch = 0.25'));
+  assert.ok(threadScript.includes('is_outer = True'));
+
+  // Snap-Fit Cantilever Joint test
+  const snapScript = service.generateCadScript({ type: 'snap_fit_joint', tabCount: 6 });
+  assert.ok(snapScript.includes('Snap_Fit_Male'));
+  assert.ok(snapScript.includes('Snap_Fit_Female'));
+  assert.ok(snapScript.includes('tab_count = 6'));
 });
 
 test('4. 3D Printing Pre-Flight Validator', () => {
