@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "agentic-blender",
+  "version": "0.2.0",
+  "runtime": "deepseek-harness",
+  "dsh": {
+    "profile": {
+      "name": "cad-cam-maker",
+      "description": "Autonomous Blender CAD, 3D printing prep, and Langmuir CNC machining agent",
+      "plugins": [
+        "./dsh-plugin-blender"
+      ],
+      "tools": [
+        "blender_status",
+        "blender_inspect_scene",
+        "blender_cad_generate",
+        "blender_3dprint_preflight",
+        "blender_cnc_postprocess"
+      ],
+      "config": {
+        "host": "127.0.0.1",
+        "port": 9876,
+        "default_units": "inches",
+        "cnc_controller": "FireControl",
+        "cnc_machine": "crossfire_pro",
+        "3d_printer": "bambu_x1c"
+      }
+    }
+  }
+}
