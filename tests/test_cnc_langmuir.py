@@ -69,3 +69,26 @@ def test_gcode_validator_out_of_bounds():
     res = validate_firecontrol_gcode(bad_gcode, machine_name="crossfire_pro")
     assert res["valid"] is False
     assert any("exceeds machine envelope limit" in err for err in res["errors"])
+
+def test_export_dxf_from_paths(tmp_path):
+    from agentic_blender.cnc.slicer import export_dxf_from_paths
+    dxf_file = str(tmp_path / "test_contour.dxf")
+    path = [(0.0, 0.0), (3.0, 0.0), (3.0, 2.0), (0.0, 2.0), (0.0, 0.0)]
+    success = export_dxf_from_paths([path], dxf_file, units="inch")
+    assert success is True
+    with open(dxf_file, "r", encoding="utf-8") as f:
+        content = f.read()
+    assert "SECTION" in content
+    assert "ENTITIES" in content
+
+def test_expanded_material_cut_charts():
+    from agentic_blender.cnc.langmuir import get_machine_profile
+    profile = get_machine_profile("crossfire_pro")
+    materials = profile["materials"]
+    assert "18_gauge_mild_steel" in materials
+    assert "10_gauge_mild_steel" in materials
+    assert "3_8_inch_mild_steel" in materials
+    assert "3_16_inch_aluminum" in materials
+    assert "11_gauge_stainless" in materials
+    assert materials["18_gauge_mild_steel"]["cut_feed_rate"] == 200.0
+    assert materials["3_8_inch_mild_steel"]["cut_feed_rate"] == 32.0
