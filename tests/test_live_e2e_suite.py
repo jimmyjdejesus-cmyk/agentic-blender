@@ -164,7 +164,7 @@ def test_live_cnc_dxf_and_firecontrol_plasma_gcode(tmp_path):
     assert os.path.getsize(dxf_path) > 100
 
     # Read back DXF with ezdxf
-    import ezdxf
+    ezdxf = pytest.importorskip("ezdxf")
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
     polylines = msp.query("LWPOLYLINE")
