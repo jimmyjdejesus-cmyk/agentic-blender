@@ -24,6 +24,14 @@ import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
+try:
+    from ..cad import scene_manager
+except Exception:
+    try:
+        from agentic_blender.cad import scene_manager
+    except Exception:
+        scene_manager = None
+
 # ----------------- Configuration & Global State -----------------
 
 BRIDGE_PORT = 9876
@@ -163,19 +171,22 @@ class AgenticSceneSettings(bpy.types.PropertyGroup):
 
 # ----------------- Prompt AI Callers -----------------
 
-SYSTEM_PROMPT = """You are an expert Blender 3D CAD and Python (bpy) automation engineer.
-Generate clean, robust Python code using `bpy` that precisely fulfills the user's request.
+SYSTEM_PROMPT = """You are an autonomous Agentic Blender 3D CAD, CAM, and Python (bpy) automation engineer.
+You have FULL programmatic control over the Blender environment, including:
+- Scene Collections: organizing parts, creating parent/child collections, grouping, setting visibility, and color tagging.
+- External libraries & asset catalogs: loading, linking, appending datablocks, and converting to local objects via `bpy.data.libraries.load()`.
+- Procedural parametric geometry, modifiers, booleans, and fillets.
+- PBR materials, shaders, studio three-point lighting, and cameras.
+- 3D printing prep (manifold watertight meshes) & CNC manufacturing.
 
 CRITICAL RULES:
 1. Return ONLY pure executable Python code inside a ```python ``` markdown block. Do not provide conversational filler.
-2. The code will execute directly inside Blender.
-3. Handle dimensions accurately: default to meters/millimeters. Ensure geometry has correct scale and thickness.
-4. When creating modular mechanical parts (canisters, lids, holders, filters):
-   - Create separate objects for modular components (e.g. Canister_Body, Canister_Lid, Modular_Base, Filter_Grate).
-   - Position components neatly side-by-side or stacked so they don't awkwardly overlap.
-   - Add appropriate bevels/chamfers for manufacturing realism.
-5. Apply appropriate materials using Principled BSDF shaders with pleasant colors (e.g., anodized aluminum, matte polymer, silicone).
-6. Always ensure transforms are applied (bpy.ops.object.transform_apply) if modifiers rely on dimensions.
+2. The code executes directly inside Blender.
+3. Structure parts neatly into designated Collections (e.g., `col = bpy.data.collections.get("Body") or bpy.data.collections.new("Body"); bpy.context.scene.collection.children.link(col)`).
+4. Apply realistic Principled BSDF materials with distinct colors, metallic, and roughness.
+5. Set up clean studio lighting and frame the camera automatically.
+6. When creating modular mechanical parts (canisters, lids, holders, filters), place components neatly side-by-side or stacked so they assemble cleanly.
+7. Always apply transforms (bpy.ops.object.transform_apply) if modifiers rely on dimensions.
 """
 
 def call_gemini_api(prompt, api_key):
@@ -432,7 +443,13 @@ class AGENTIC_OT_ExecutePrompt(bpy.types.Operator):
 
             settings.last_code = code
 
-            scope = {"bpy": bpy, "C": bpy.context, "D": bpy.data}
+            scope = {
+                "bpy": bpy,
+                "C": bpy.context,
+                "D": bpy.data,
+                "scene_manager": scene_manager,
+                "sm": scene_manager,
+            }
             exec(code, scope)
 
             settings.status_msg = "Success! 3D model generated."
@@ -646,8 +663,137 @@ class AGENTIC_OT_ClearScene(bpy.types.Operator):
             bpy.ops.object.mode_set(mode='OBJECT')
         bpy.ops.object.select_all(action='SELECT')
         bpy.ops.object.delete(use_global=False)
+        for col in list(bpy.data.collections):
+            bpy.data.collections.remove(col)
         context.scene.agentic_settings.status_msg = "Scene cleared."
         return {'FINISHED'}
+
+class AGENTIC_OT_EnterCanvasMode(bpy.types.Operator):
+    bl_idname = "agentic.enter_canvas_mode"
+    bl_label = "Agentic Blank Canvas"
+    bl_description = "Switch to distraction-free Blank Canvas: removes workspace tabs and clutter"
+
+    save_startup: bpy.props.BoolProperty(name="Save as Default Startup", default=True)
+
+    def execute(self, context):
+        # 1. Consolidate workspaces to ONLY 'Agentic Canvas'
+        workspaces = list(bpy.data.workspaces)
+        current = context.workspace or workspaces[0]
+        current.name = "Agentic Canvas"
+        to_remove = [w for w in workspaces if w != current]
+        if to_remove:
+            bpy.data.batch_remove(to_remove)
+
+        # 2. Viewport setup: hide sidebars and toolbars
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                s = area.spaces.active
+                s.show_region_toolbar = False
+                s.show_region_ui = False
+
+        if self.save_startup:
+            try:
+                bpy.ops.wm.save_homefile()
+                self.report({'INFO'}, "Saved Blank Agentic Canvas as default startup!")
+            except Exception as e:
+                self.report({'INFO'}, f"Canvas applied: {e}")
+
+        return {'FINISHED'}
+
+class AGENTIC_OT_ToggleCollection(bpy.types.Operator):
+    bl_idname = "agentic.toggle_collection"
+    bl_label = "Toggle Collection"
+    collection_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        col = bpy.data.collections.get(self.collection_name)
+        if col:
+            col.hide_viewport = not col.hide_viewport
+            return {'FINISHED'}
+        return {'CANCELLED'}
+
+class AGENTIC_OT_CreateSmartCollections(bpy.types.Operator):
+    bl_idname = "agentic.create_smart_collections"
+    bl_label = "Auto-Organize Scene Collections"
+    bl_description = "Group all scene objects into structured collections"
+
+    def execute(self, context):
+        for obj in bpy.context.scene.objects:
+            name_lower = obj.name.lower()
+            if "lid" in name_lower or "cap" in name_lower:
+                target_col = "Lids_and_Caps"
+            elif "base" in name_lower or "filter" in name_lower:
+                target_col = "Bases_and_Filters"
+            elif "cavity" in name_lower or "dosing" in name_lower or "holder" in name_lower:
+                target_col = "Dosing_Mechanisms"
+            elif "bracket" in name_lower or "plate" in name_lower or "mount" in name_lower:
+                target_col = "Mounts_and_Plates"
+            else:
+                target_col = "Main_Assemblies"
+
+            col = bpy.data.collections.get(target_col) or bpy.data.collections.new(target_col)
+            if col.name not in [c.name for c in bpy.context.scene.collection.children]:
+                bpy.context.scene.collection.children.link(col)
+            for c in list(obj.users_collection):
+                c.objects.unlink(obj)
+            col.objects.link(obj)
+
+        self.report({'INFO'}, "Scene organized into smart collections!")
+        return {'FINISHED'}
+
+class AGENTIC_MT_CollectionsMenu(bpy.types.Menu):
+    bl_label = "Collections"
+    bl_idname = "AGENTIC_MT_CollectionsMenu"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Agent Collections:", icon='OUTLINER_COLLECTION')
+        cols = list(bpy.data.collections)
+        if not cols:
+            layout.label(text="No Collections (Scene Root)", icon='INFO')
+        else:
+            for col in cols:
+                row = layout.row()
+                row.label(text=f"{col.name} ({len(col.objects)} obj)")
+                op = row.operator("agentic.toggle_collection", text="", icon='HIDE_OFF' if not col.hide_viewport else 'HIDE_ON')
+                op.collection_name = col.name
+        layout.separator()
+        layout.operator("agentic.create_smart_collections", text="Auto-Organize Collections", icon='FILE_NEW')
+
+class AGENTIC_MT_ManufacturingMenu(bpy.types.Menu):
+    bl_label = "Manufacturing"
+    bl_idname = "AGENTIC_MT_ManufacturingMenu"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="3D Printing & CAM:", icon='MODIFIER')
+        layout.operator("agentic.check_3dprint", text="Check Manifold & Mass", icon='CHECKMARK')
+        layout.operator("agentic.export_3dprint", text="Export STL", icon='EXPORT')
+        layout.separator()
+        layout.label(text="Langmuir CNC Machining:", icon='GRID')
+        layout.operator("agentic.export_cnc", text="Export FireControl G-Code & DXF", icon='FILE_SCRIPT')
+
+def draw_agentic_topbar(self, context):
+    layout = self.layout
+    if not hasattr(context.scene, "agentic_settings"):
+        return
+    settings = context.scene.agentic_settings
+
+    # Prominent on-screen Agent Prompt Bar
+    row = layout.row(align=True)
+    row.label(text="🤖 Agent:", icon='FORCE_BOID')
+
+    sub = row.row(align=True)
+    sub.scale_x = 2.2
+    sub.prop(settings, "prompt", text="")
+
+    row.operator("agentic.execute_prompt", text="✨ Generate", icon='PLAY')
+    row.operator("agentic.prompt_modal", text="", icon='WINDOW')
+    row.menu("AGENTIC_MT_CollectionsMenu", text="", icon='OUTLINER_COLLECTION')
+    row.menu("AGENTIC_MT_ManufacturingMenu", text="", icon='TOOL_SETTINGS')
+    row.operator("agentic.enter_canvas_mode", text="", icon='WORKSPACE')
+    row.operator("agentic.clear_scene", text="", icon='TRASH')
+
 
 # ----------------- 3D Viewport UI Panel -----------------
 
@@ -817,7 +963,13 @@ def process_tasks_timer():
         try:
             if action == "execute":
                 code = task.get("code")
-                scope = {"bpy": bpy, "C": bpy.context, "D": bpy.data}
+                scope = {
+                    "bpy": bpy,
+                    "C": bpy.context,
+                    "D": bpy.data,
+                    "scene_manager": scene_manager,
+                    "sm": scene_manager,
+                }
                 exec(code, scope)
                 res["success"] = True
             elif action == "clear":
@@ -871,6 +1023,11 @@ classes = (
     AGENTIC_OT_PromptModal,
     AGENTIC_OT_SetQuickPrompt,
     AGENTIC_OT_ClearScene,
+    AGENTIC_OT_EnterCanvasMode,
+    AGENTIC_OT_ToggleCollection,
+    AGENTIC_OT_CreateSmartCollections,
+    AGENTIC_MT_CollectionsMenu,
+    AGENTIC_MT_ManufacturingMenu,
     AGENTIC_PT_MainPanel,
 )
 
@@ -880,6 +1037,12 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.agentic_settings = bpy.props.PointerProperty(type=AgenticSceneSettings)
+
+    # Attach prominent Agentic Prompt Bar directly to Viewport Header
+    try:
+        bpy.types.VIEW3D_HT_header.prepend(draw_agentic_topbar)
+    except Exception:
+        pass
 
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
@@ -893,6 +1056,11 @@ def register():
     start_bridge_server()
 
 def unregister():
+    try:
+        bpy.types.VIEW3D_HT_header.remove(draw_agentic_topbar)
+    except Exception:
+        pass
+
     stop_bridge_server()
     if bpy.app.timers.is_registered(process_tasks_timer):
         bpy.app.timers.unregister(process_tasks_timer)
