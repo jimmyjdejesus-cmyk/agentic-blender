@@ -28,6 +28,7 @@ def test_plasma_gcode_formatting():
     assert "H1 (Torch Height Control ON)" in gcode
 
     # Check cut motion & feed
+    assert "Lead-in Cut" in gcode
     assert "G1 X5.0000 Y0.0000 F150.0" in gcode
 
     # Check torch off & retract

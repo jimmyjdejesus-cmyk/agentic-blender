@@ -233,3 +233,79 @@ bpy.context.scene.camera = bpy.context.active_object
 bpy.ops.object.light_add(type='SUN', location=(2, -3, 8))
 print("[CAD Generator] Precision CNC mounting plate created.")
 '''
+
+def generate_threaded_lip_code(radius=1.8, pitch=0.15, turns=3, internal=False):
+    """
+    Generates procedural helical screw thread geometry for modular canister lips and caps.
+    """
+    direction = -1 if internal else 1
+    return f'''import bpy, bmesh, math
+
+radius = {radius}
+pitch = {pitch}
+turns = {turns}
+direction = {direction}
+
+# Create helical ridge profile
+total_height = pitch * turns
+steps_per_turn = 32
+total_steps = turns * steps_per_turn
+
+bpy.ops.mesh.primitive_cylinder_add(
+    radius=radius,
+    depth=total_height,
+    location=(0, 0, total_height / 2.0)
+)
+core = bpy.context.active_object
+core.name = "Thread_Base_Core"
+
+# Generate spiral helical ridges
+for step in range(total_steps):
+    theta = step * (2.0 * math.pi / float(steps_per_turn))
+    z = (step / float(total_steps)) * total_height
+    x = (radius + (direction * 0.08)) * math.cos(theta)
+    y = (radius + (direction * 0.08)) * math.sin(theta)
+    bpy.ops.mesh.primitive_cylinder_add(
+        radius=0.07,
+        depth=pitch * 0.8,
+        location=(x, y, z),
+        rotation=(0, math.radians(90), theta)
+    )
+    ridge = bpy.context.active_object
+    ridge.name = f"Helix_Node_{{step}}"
+
+print("[CAD Generator] Procedural helical threads generated: {turns} turns at pitch {pitch} in.")
+'''
+
+def generate_snap_fit_joint_code(radius=1.8, count=4, tab_width=0.3, tab_height=0.2):
+    """
+    Generates interlocking cantilever snap-fit tabs for modular toolless assembly.
+    """
+    return f'''import bpy, bmesh, math
+
+radius = {radius}
+count = {count}
+tab_w = {tab_width}
+tab_h = {tab_height}
+
+bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=0.8, location=(0, 0, 0.4))
+collar = bpy.context.active_object
+collar.name = "Snap_Fit_Collar"
+
+for i in range(count):
+    ang = i * (2.0 * math.pi / float(count))
+    tx = (radius - 0.05) * math.cos(ang)
+    ty = (radius - 0.05) * math.sin(ang)
+    bpy.ops.mesh.primitive_cube_add(
+        size=1.0,
+        location=(tx, ty, 0.4 + (tab_h / 2.0)),
+        rotation=(0, 0, ang)
+    )
+    tab = bpy.context.active_object
+    tab.scale = (0.1, tab_w, tab_h)
+    bpy.ops.object.transform_apply(scale=True)
+    tab.name = f"Snap_Tab_{{i}}"
+
+print(f"[CAD Generator] Generated {{count}} cantilever snap-fit joint tabs.")
+'''
+
