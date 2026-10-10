@@ -1,59 +1,145 @@
-# Langmuir CNC & Blender Agentic Workspace
+# 🎨 Agentic Blender (`agentic-blender`)
 
-This workspace bridges **Blender 5.2** 3D modeling with **Langmuir Systems CNC machines** (CrossFire, CrossFire PRO, CrossFire XR, and MR-1 Gantry Mill) running **FireControl**.
+> **Autonomous Prompt-Driven 3D CAD, 3D Printing Pre-Flight, and Langmuir CNC Manufacturing Engine.**
 
----
-
-## 📁 Workspace Structure
-
-- **`models/`**: 3D design files (`.blend`, `.obj`, `.stl`).
-- **`dxf_svg/`**: Exported 2D contours and profiles (`.svg`, `.dxf`) for sheet metal and plasma cutting.
-- **`gcode/`**: Generated CNC G-code files (`.nc`, `.tap`) formatted for FireControl.
-- **`scripts/`**:
-  - `langmuir_config.py`: Machine parameters, work envelopes, and material feeds/speeds.
-  - `blender_cnc_export.py`: Blender headless script to extract contours and generate FireControl G-code.
-  - `agent_cnc_cli.py`: Unified pipeline orchestrator and G-code syntax validator.
+[![CI](https://github.com/jimmyjdejesus-cmyk/agentic-blender/actions/workflows/ci.yml/badge.svg)](https://github.com/jimmyjdejesus-cmyk/agentic-blender/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Blender 4.0 - 5.2+](https://img.shields.io/badge/Blender-5.2%20LTS-orange.svg)](https://www.blender.org/)
+[![DSH Cordis Native](https://img.shields.io/badge/DSH-Cordis%20Plugin-purple.svg)](https://github.com/deepseek-ai/dsh)
 
 ---
 
-## 🚀 Quick Start & CLI Usage
+## 🌟 Highlights
 
-### 1. Generate a Test Part & FireControl G-code
-```powershell
-python scripts/agent_cnc_cli.py --sample --out-nc gcode/test_bracket.nc
+1. **Prompt Directly in Blender**:
+   - Native 3D Viewport UI panel (`N` sidebar -> **Agentic AI** tab) or instant popup (**`Shift + Alt + A`**).
+   - Multi-engine flexibility: **Built-in Parametric CAD Engine** (100% offline, zero setup), **Google Gemini AI**, or **Local LLM (Ollama/LM Studio)**.
+   - Pushes native **Undo steps (`Ctrl + Z`)** for every generation.
+2. **DeepSeek Harness (DSH) Agentic Runtime**:
+   - Native Cordis plugin (`dsh-plugin-blender`) exposing 5 tools for autonomous planning, CAD modeling, and manufacturing preparation.
+3. **3D Printing Pre-Flight Engine**:
+   - Watertight & non-manifold edge detection, inverted normal checks, and degenerate face repair.
+   - Exact volume calculation ($cm^3$) and filament mass estimation (PLA, PETG, ABS, TPU, Resin).
+   - Build plate envelope verification for **Bambu Lab X1C**, **Prusa MK4**, **Ender 3**, and **Voron 2.4**.
+4. **Langmuir Systems CNC Post-Processor**:
+   - Direct G-code export for **Langmuir Systems FireControl** (CrossFire, CrossFire PRO, CrossFire XR plasma tables, and MR-1 CNC Mill).
+   - Initial Height Sensing (IHS) ohmic/switch touch probe (`G38.2`), torch trigger (`M3`/`M5`), pierce delays, and Torch Height Control (THC) `H1`/`H0`.
+   - Linear lead-ins to prevent edge blowout divots.
+   - 2D DXF & SVG contour slicing for SheetCAM.
+5. **Jules GitHub Agent Integration**:
+   - Tag `@jules` on GitHub issues or add the `jules` label to have Google Jules autonomously write code, run tests, and open Pull Requests.
+
+---
+
+## 📐 System Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Autonomous Agent Runtimes                       │
+│  ┌─────────────────────────┐  ┌─────────────────────────────────────┐  │
+│  │   DeepSeek Harness      │  │        Google Jules Agent           │  │
+│  │   (DSH Cordis Plugins)  │  │        (GitHub Issue -> PR)         │  │
+│  └────────────┬────────────┘  └──────────────────┬──────────────────┘  │
+└───────────────┼──────────────────────────────────┼─────────────────────┘
+                │ DSH Tool Calls                   │ Git PRs & Commits
+┌───────────────▼──────────────────────────────────▼─────────────────────┐
+│                 agentic-blender Python Core Package                    │
+│  • cad/parametric.py  : Modular canisters, snap fits, helical threads │
+│  • print3d/           : Watertight manifold checks, volume & bed fit   │
+│  • cnc/               : Langmuir FireControl post-processor & IHS THC  │
+│  • bridge/client.py   : High-level Python RPC client (:9876)           │
+└───────────────────────────────┬────────────────────────────────────────┘
+                                │ JSON-RPC / HTTP (:9876)
+┌───────────────────────────────▼────────────────────────────────────────┐
+│                        Blender 5.2 Session                             │
+│  • 3D Viewport Sidebar: N-panel -> 'Agentic AI' tab (or Shift+Alt+A)   │
+│  • Thread-safe background execution queue & Main-thread timers         │
+│  • Native Undo stack integration (Ctrl+Z)                              │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Export G-Code from a Blender Model
-```powershell
-python scripts/agent_cnc_cli.py --model models/my_part.blend --out-nc gcode/my_part.nc --material 14_gauge_mild_steel
+---
+
+## 🚀 Quick Start
+
+### 1. Installation
+
+```bash
+git clone https://github.com/jimmyjdejesus-cmyk/agentic-blender.git
+cd agentic-blender
+pip install -e .
 ```
 
-### 3. Automatically Launch FireControl
-```powershell
-python scripts/agent_cnc_cli.py --sample --open-firecontrol
+### 2. Launch Blender & Check Bridge
+
+```bash
+# Verify connectivity to live Blender session
+agentic-blender status
+```
+
+### 3. Generate CAD in Blender
+
+```bash
+# Generate a modular cylindrical powder dispenser directly in Blender
+agentic-blender cad --type dispenser --shape cylinder --execute
+
+# Generate a precision Langmuir CNC mounting plate
+agentic-blender cad --type bracket --execute
+```
+
+### 4. 3D Printing Pre-Flight Check
+
+```bash
+agentic-blender print3d --check-sample --printer bambu_x1c --material pla
+```
+
+### 5. Validate Langmuir CNC G-Code
+
+```bash
+agentic-blender cnc --validate gcode/test_sample.nc --machine crossfire_pro
 ```
 
 ---
 
-## ⚙️ Supported Machines & Materials
+## 🔌 DeepSeek Harness (DSH) Setup
 
-### Machines:
-- `crossfire_pro` (Default): CrossFire PRO Plasma CNC with IHS & THC
-- `crossfire_xr`: CrossFire XR 4x8 Industrial Plasma CNC
-- `mr1_mill`: MR-1 CNC Gantry Milling Machine
+To connect `agentic-blender` to your DSH harness instance:
 
-### Material Presets (Mild Steel):
-- `16_gauge_mild_steel`: 180 IPM, 0.5s pierce delay
-- `14_gauge_mild_steel`: 150 IPM, 0.6s pierce delay (Default)
-- `11_gauge_mild_steel`: 110 IPM, 0.7s pierce delay
-- `3_16_inch_mild_steel`: 75 IPM, 0.9s pierce delay
-- `1_4_inch_mild_steel`: 48 IPM, 1.2s pierce delay
+```bash
+# 1. Run DSH plugin test suite
+cd dsh-plugin-blender
+npm test
+
+# 2. Link plugin to your local DSH installation
+mkdir -p ~/.dsh/plugins
+ln -sfn $(pwd) ~/.dsh/plugins/dsh-plugin-blender
+```
+
+See [`dsh.config.json`](dsh.config.json) for the active harness profile and tool registrations.
 
 ---
 
-## 🎛️ FireControl Standard Syntax
-Generated `.nc` files include:
-- **IHS (Initial Height Sensing)**: `G38.2` electrical touch probe with 0.02" springback compensation.
-- **Pierce Cycle**: `M3` torch fire + `G4 P[seconds]` dwell before cutting.
-- **THC (Torch Height Control)**: `H1` (enable THC during cut) and `H0` (disable before rapid).
-- **Coordinate Systems**: `G20` (Inches), `G54` Work Coordinate System, and `G90 G94`.
+## 🤖 Jules GitHub Agent Workflow
+
+1. Open an issue on this repository describing a feature or fix.
+2. Tag `@jules` in the issue description or apply the **`jules`** label.
+3. Jules will clone the repo in an isolated VM, write code, run pytest & npm test, and submit a PR to `main`.
+4. Review and merge the pull request.
+
+---
+
+## 🧪 Running the Test Suites
+
+```bash
+# Run Python pytest suite (CAD, 3D printing, CNC post-processor, bridge client)
+pytest tests/ -v
+
+# Run DSH Cordis plugin Node test suite
+cd dsh-plugin-blender && npm test
+```
+
+---
+
+## 📄 License
+
+MIT © [Jimmy De Jesus](https://github.com/jimmyjdejesus-cmyk)
