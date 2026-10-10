@@ -48,3 +48,9 @@ htmlcov/
 *.log
 temp/
 .dsh/
+
+# Generated CAM/Print output files
+exports/
+gcode/
+dxf_svg/
+

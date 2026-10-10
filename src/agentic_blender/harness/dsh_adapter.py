@@ -58,7 +58,7 @@ class DshBlenderAdapter:
                 non_manifold_edges=params.get("nonManifoldEdges", 0),
                 zero_area_faces=params.get("zeroAreaFaces", 0),
                 inverted_normals=params.get("invertedNormals", 0),
-                bounding_box_mm=tuple(params.get("dimensionsMm", [50, 50, 50])),
+                bounding_box_mm=params.get("dimensionsMm", [50, 50, 50]),
                 volume_cm3=params.get("volumeCm3", 25.0),
                 material=params.get("material", "pla"),
                 printer_profile=params.get("printer", "bambu_x1c")

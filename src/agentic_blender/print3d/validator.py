@@ -23,6 +23,11 @@ BUILD_PLATES = {
     "elegoo_saturn": {"x": 218.0, "y": 123.0, "z": 250.0},
 }
 
+def calculate_mass(volume_cm3, material="pla"):
+    """Calculate estimated mass in grams for a given volume and material."""
+    density = MATERIAL_DENSITIES.get(material.lower(), MATERIAL_DENSITIES["pla"])
+    return round(volume_cm3 * density, 2)
+
 def analyze_mesh_topology(
     vertex_count,
     edge_count,
@@ -54,7 +59,12 @@ def analyze_mesh_topology(
         errors.append(f"Found {inverted_normals} inverted or inconsistent face normals.")
 
     # 2. Size & Dimensions Check
-    dim_x, dim_y, dim_z = bounding_box_mm
+    if isinstance(bounding_box_mm, dict):
+        dim_x = float(bounding_box_mm.get("x", 50.0))
+        dim_y = float(bounding_box_mm.get("y", 50.0))
+        dim_z = float(bounding_box_mm.get("z", 50.0))
+    else:
+        dim_x, dim_y, dim_z = bounding_box_mm
     plate = BUILD_PLATES.get(printer_profile, BUILD_PLATES["bambu_x1c"])
     
     fits_bed = (dim_x <= plate["x"]) and (dim_y <= plate["y"]) and (dim_z <= plate["z"])
