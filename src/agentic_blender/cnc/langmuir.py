@@ -21,6 +21,14 @@ MACHINE_PROFILES = {
         "ihs_feed_rate": 60.0,
         "thc_enabled": True,  # Torch Height Control
         "materials": {
+            "18_gauge_mild_steel": {
+                "amperage": 45,
+                "pierce_height": 0.15,
+                "pierce_delay": 0.4,
+                "cut_height": 0.06,
+                "cut_feed_rate": 200.0,
+                "kerf_width": 0.040,
+            },
             "16_gauge_mild_steel": {
                 "amperage": 45,
                 "pierce_height": 0.15,
@@ -45,6 +53,14 @@ MACHINE_PROFILES = {
                 "cut_feed_rate": 110.0,
                 "kerf_width": 0.055,
             },
+            "10_gauge_mild_steel": {
+                "amperage": 45,
+                "pierce_height": 0.15,
+                "pierce_delay": 0.8,
+                "cut_height": 0.06,
+                "cut_feed_rate": 95.0,
+                "kerf_width": 0.058,
+            },
             "3_16_inch_mild_steel": {
                 "amperage": 45,
                 "pierce_height": 0.16,
@@ -61,6 +77,14 @@ MACHINE_PROFILES = {
                 "cut_feed_rate": 48.0,
                 "kerf_width": 0.065,
             },
+            "3_8_inch_mild_steel": {
+                "amperage": 45,
+                "pierce_height": 0.20,
+                "pierce_delay": 1.6,
+                "cut_height": 0.06,
+                "cut_feed_rate": 32.0,
+                "kerf_width": 0.075,
+            },
             "1_8_inch_aluminum": {
                 "amperage": 45,
                 "pierce_height": 0.15,
@@ -69,6 +93,30 @@ MACHINE_PROFILES = {
                 "cut_feed_rate": 130.0,
                 "kerf_width": 0.055,
             },
+            "3_16_inch_aluminum": {
+                "amperage": 45,
+                "pierce_height": 0.16,
+                "pierce_delay": 0.9,
+                "cut_height": 0.06,
+                "cut_feed_rate": 90.0,
+                "kerf_width": 0.060,
+            },
+            "1_4_inch_aluminum": {
+                "amperage": 45,
+                "pierce_height": 0.18,
+                "pierce_delay": 1.2,
+                "cut_height": 0.06,
+                "cut_feed_rate": 55.0,
+                "kerf_width": 0.065,
+            },
+            "16_gauge_stainless": {
+                "amperage": 45,
+                "pierce_height": 0.15,
+                "pierce_delay": 0.5,
+                "cut_height": 0.06,
+                "cut_feed_rate": 160.0,
+                "kerf_width": 0.045,
+            },
             "14_gauge_stainless": {
                 "amperage": 45,
                 "pierce_height": 0.15,
@@ -76,6 +124,14 @@ MACHINE_PROFILES = {
                 "cut_height": 0.06,
                 "cut_feed_rate": 140.0,
                 "kerf_width": 0.050,
+            },
+            "11_gauge_stainless": {
+                "amperage": 45,
+                "pierce_height": 0.15,
+                "pierce_delay": 0.7,
+                "cut_height": 0.06,
+                "cut_feed_rate": 100.0,
+                "kerf_width": 0.055,
             },
         },
     },

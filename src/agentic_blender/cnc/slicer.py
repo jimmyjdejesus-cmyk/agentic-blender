@@ -100,3 +100,59 @@ with open(output_gcode, "w", encoding="utf-8") as f:
 print("[Slicer] Successfully generated SVG: " + output_svg)
 print("[Slicer] Successfully generated G-Code: " + output_gcode)
 '''
+
+def export_dxf_from_paths(paths, output_dxf_path, units="inch"):
+    """
+    Exports 2D paths to an AutoCAD DXF file for SheetCAM or CAD packages.
+    Uses ezdxf to create closed LWPOLYLINE entities with proper units.
+    """
+    import os
+    os.makedirs(os.path.dirname(os.path.abspath(output_dxf_path)), exist_ok=True)
+    try:
+        import ezdxf
+        doc = ezdxf.new("R2000")
+        if units == "inch":
+            doc.header["$INSUNITS"] = 1  # Inches
+        else:
+            doc.header["$INSUNITS"] = 4  # Millimeters
+        msp = doc.modelspace()
+        for path in paths:
+            if not path or len(path) < 2:
+                continue
+            pts_2d = [(pt[0], pt[1]) for pt in path]
+            msp.add_lwpolyline(pts_2d, close=True)
+        doc.saveas(output_dxf_path)
+        return True
+    except ImportError:
+        return _write_minimal_dxf_r12(paths, output_dxf_path)
+
+def _write_minimal_dxf_r12(paths, output_dxf_path):
+    """Fallback minimal ASCII DXF R12 writer when ezdxf is not installed."""
+    lines = [
+        "0", "SECTION",
+        "2", "ENTITIES",
+    ]
+    for path in paths:
+        if not path or len(path) < 2:
+            continue
+        for i in range(len(path) - 1):
+            p1 = path[i]
+            p2 = path[i + 1]
+            lines.extend([
+                "0", "LINE",
+                "8", "0",
+                "10", f"{p1[0]:.6f}",
+                "20", f"{p1[1]:.6f}",
+                "30", "0.000000",
+                "11", f"{p2[0]:.6f}",
+                "21", f"{p2[1]:.6f}",
+                "31", "0.000000",
+            ])
+    lines.extend([
+        "0", "ENDSEC",
+        "0", "EOF",
+        ""
+    ])
+    with open(output_dxf_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return True
