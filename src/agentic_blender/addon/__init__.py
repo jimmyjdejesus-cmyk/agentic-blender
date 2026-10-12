@@ -48,34 +48,80 @@ def add_log(msg):
     if len(RECENT_LOGS) > 25:
         RECENT_LOGS.pop(0)
 
+# ----------------- Universal Model-Agnostic LLM Router -----------------
+
+DEFAULT_MODELS = {
+    "OPENROUTER": "anthropic/claude-3.7-sonnet",
+    "GEMINI": "gemini-2.5-flash",
+    "ANTHROPIC": "claude-3-7-sonnet-latest",
+    "DEEPSEEK": "deepseek-chat",
+    "OPENAI_COMPAT": "gpt-4o",
+    "GROQ": "llama-3.3-70b-versatile",
+    "LOCAL_LLM": "qwen2.5-coder:7b",
+}
+
+PROVIDER_ENDPOINTS = {
+    "OPENROUTER": "https://openrouter.ai/api/v1/chat/completions",
+    "OPENAI_COMPAT": "https://api.openai.com/v1/chat/completions",
+    "DEEPSEEK": "https://api.deepseek.com/v1/chat/completions",
+    "GROQ": "https://api.groq.com/openai/v1/chat/completions",
+    "ANTHROPIC": "https://api.anthropic.com/v1/messages",
+    "LOCAL_LLM": "http://localhost:11434/v1/chat/completions",
+}
+
+ENV_KEY_MAP = {
+    "OPENROUTER": ("OPENROUTER_API_KEY",),
+    "GEMINI": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "ANTHROPIC": ("ANTHROPIC_API_KEY",),
+    "OPENAI_COMPAT": ("OPENAI_API_KEY",),
+    "DEEPSEEK": ("DEEPSEEK_API_KEY",),
+    "GROQ": ("GROQ_API_KEY",),
+}
+
+
+def resolve_api_key(provider, explicit_key=""):
+    if explicit_key and explicit_key.strip():
+        return explicit_key.strip()
+    for env_var in ENV_KEY_MAP.get(provider.upper(), ()):
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            return val
+    return os.environ.get("LLM_API_KEY", "").strip()
+
+
+def _on_engine_changed(self, context):
+    if self.engine in DEFAULT_MODELS:
+        self.model_name = DEFAULT_MODELS[self.engine]
+
+
 # ----------------- Addon Preferences -----------------
 
 class AgenticAddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
     gemini_api_key: bpy.props.StringProperty(
-        name="Gemini API Key",
-        description="Google Gemini API key for in-Blender prompt generation (get free at aistudio.google.com)",
+        name="API Key (Universal / Provider)",
+        description="API key for OpenRouter, Gemini, Anthropic, OpenAI, DeepSeek, or Groq",
         subtype='PASSWORD',
         default=""
     )
     custom_endpoint_url: bpy.props.StringProperty(
         name="Local / Custom API URL",
-        description="URL for Ollama, LM Studio, or OpenAI-compatible server",
+        description="URL for Ollama, LM Studio, or custom OpenAI-compatible server",
         default="http://localhost:11434/v1/chat/completions"
     )
     local_model_name: bpy.props.StringProperty(
-        name="Local Model Name",
-        description="Model identifier for local Ollama / LM Studio (e.g., llama3.2, mistral)",
-        default="llama3.2"
+        name="Default Local Model",
+        description="Model identifier for local Ollama / LM Studio (e.g., qwen2.5-coder:7b, llama3.2)",
+        default="qwen2.5-coder:7b"
     )
 
     def draw(self, context):
         layout = self.layout
         col = layout.column(align=True)
-        col.label(text="AI Engine Settings:", icon='PREFERENCES')
-        col.prop(self, "gemini_api_key")
-        col.label(text="Get a free Gemini API key at: https://aistudio.google.com/apikey", icon='HELP')
+        col.label(text="Universal Model-Agnostic LLM Settings:", icon='PREFERENCES')
+        col.prop(self, "gemini_api_key", text="API Key")
+        col.label(text="Supports OpenRouter (300+ models), Gemini, Claude, OpenAI, DeepSeek, Groq", icon='HELP')
         col.separator()
         col.label(text="Local / Offline LLM (Ollama or LM Studio):", icon='CONSOLE')
         col.prop(self, "custom_endpoint_url")
@@ -92,13 +138,24 @@ class AgenticSceneSettings(bpy.types.PropertyGroup):
     )
     engine: bpy.props.EnumProperty(
         name="Engine",
-        description="AI generation engine to use",
+        description="Model-agnostic AI provider or offline CAD engine",
         items=[
-            ('GEMINI', "Gemini AI (Cloud)", "Use Google Gemini API for high-level creative prompts", 'WORLD', 0),
-            ('LOCAL_LLM', "Local LLM (Ollama/LM Studio)", "Use local Ollama or OpenAI compatible server", 'CONSOLE', 1),
-            ('CAD_ENGINE', "Built-in CAD Engine (Instant)", "Offline parametric CAD generator without any API key", 'TOOL_SETTINGS', 2),
+            ('CAD_ENGINE', "Built-in CAD Engine (Instant Offline)", "Deterministic parametric CAD generator — no API key needed", 'TOOL_SETTINGS', 0),
+            ('OPENROUTER', "OpenRouter (300+ Models: Claude/GPT/Qwen)", "Single API key for Claude, GPT-4o, Gemini, DeepSeek, Qwen via openrouter.ai", 'URL', 1),
+            ('GEMINI', "Google Gemini (gemini-2.5-flash / pro)", "Google Gemini API", 'WORLD', 2),
+            ('ANTHROPIC', "Anthropic Claude (claude-3-7-sonnet)", "Anthropic Claude Messages API", 'COMMUNITY', 3),
+            ('DEEPSEEK', "DeepSeek (deepseek-chat / reasoner)", "DeepSeek API", 'SCRIPT', 4),
+            ('OPENAI_COMPAT', "OpenAI / Custom (/v1/chat/completions)", "OpenAI or any OpenAI-compatible endpoint", 'NETWORK_DRIVE', 5),
+            ('GROQ', "Groq (Ultra-Fast Llama / Qwen)", "Groq Cloud LPU API", 'AUTO', 6),
+            ('LOCAL_LLM', "Local LLM (Ollama / LM Studio)", "Local Ollama or LM Studio server", 'CONSOLE', 7),
         ],
-        default='CAD_ENGINE'
+        default='CAD_ENGINE',
+        update=_on_engine_changed,
+    )
+    model_name: bpy.props.StringProperty(
+        name="Model ID",
+        description="Any model identifier supported by the selected provider (e.g. gemini-2.5-pro, anthropic/claude-3.7-sonnet, qwen2.5-coder:7b)",
+        default="gemini-2.5-flash"
     )
     show_code: bpy.props.BoolProperty(
         name="Show Code",
@@ -189,40 +246,85 @@ CRITICAL RULES:
 7. Always apply transforms (bpy.ops.object.transform_apply) if modifiers rely on dimensions.
 """
 
-def call_gemini_api(prompt, api_key):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\nUser Prompt: {prompt}"}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4096}
-    }
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30.0) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise Exception("No response generated by Gemini API.")
-        parts = candidates[0].get("content", {}).get("parts", [])
-        if not parts:
-            raise Exception("Empty content in Gemini response.")
-        return parts[0].get("text", "")
+def call_universal_llm(provider, prompt, model_name="", api_key="", endpoint_url=""):
+    prov = (provider or "OPENROUTER").upper()
+    model = (model_name or "").strip() or DEFAULT_MODELS.get(prov, "gemini-2.5-flash")
+    resolved_key = resolve_api_key(prov, api_key)
 
-def call_local_llm(prompt, endpoint_url, model_name):
+    if prov == "GEMINI":
+        if not resolved_key:
+            raise ValueError("Missing Gemini API Key (paste key in sidebar or set GEMINI_API_KEY).")
+        clean_model = model.replace("gemini/", "").replace("models/", "")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={resolved_key}"
+        payload = {
+            "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\nUser Prompt: {prompt}"}]}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4096}
+        }
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=35.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise Exception("No response generated by Gemini API.")
+            parts = candidates[0].get("content", {}).get("parts", [])
+            return parts[0].get("text", "") if parts else ""
+
+    if prov == "ANTHROPIC":
+        if not resolved_key:
+            raise ValueError("Missing Anthropic API Key (paste key in sidebar or set ANTHROPIC_API_KEY).")
+        url = PROVIDER_ENDPOINTS["ANTHROPIC"]
+        payload = {
+            "model": model,
+            "max_tokens": 4096,
+            "temperature": 0.2,
+            "system": SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": resolved_key,
+            "anthropic-version": "2023-06-01",
+        }
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=45.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            content_blocks = data.get("content", [])
+            return content_blocks[0].get("text", "") if content_blocks else ""
+
+    # OpenAI-compatible protocol (OpenRouter, OpenAI, DeepSeek, Groq, Ollama, LM Studio)
+    if prov == "LOCAL_LLM":
+        url = (endpoint_url or "").strip() or PROVIDER_ENDPOINTS["LOCAL_LLM"]
+    elif prov in PROVIDER_ENDPOINTS:
+        url = PROVIDER_ENDPOINTS[prov]
+        if prov == "OPENAI_COMPAT" and endpoint_url and endpoint_url.strip() and "localhost" not in endpoint_url:
+            url = endpoint_url.strip()
+    else:
+        url = (endpoint_url or "").strip() or PROVIDER_ENDPOINTS["OPENROUTER"]
+
+    if prov != "LOCAL_LLM" and not resolved_key:
+        raise ValueError(f"Missing API Key for {prov}. Paste your key in the sidebar.")
+
     headers = {"Content-Type": "application/json"}
+    if resolved_key:
+        headers["Authorization"] = f"Bearer {resolved_key}"
+    if prov == "OPENROUTER":
+        headers["HTTP-Referer"] = "https://github.com/jimmyjdejesus-cmyk/agentic-blender"
+        headers["X-Title"] = "Agentic Blender Studio"
+
     payload = {
-        "model": model_name,
+        "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.2
     }
-    req = urllib.request.Request(endpoint_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=45.0) as resp:
         data = json.loads(resp.read().decode("utf-8"))
         choices = data.get("choices", [])
         if not choices:
-            raise Exception("No response from local LLM.")
+            raise Exception(f"No response choices from {prov} ({model}).")
         return choices[0].get("message", {}).get("content", "")
 
 def extract_python_code(response_text):
@@ -232,30 +334,146 @@ def extract_python_code(response_text):
         return matches[0].strip()
     return response_text.strip()
 
-# ----------------- Built-in Parametric CAD Engine -----------------
+# ----------------- System 1 Brain & Built-in Parametric CAD Engine -----------------
 
-def run_builtin_cad_engine(prompt, settings=None):
-    p = prompt.lower()
-    
-    # Check if settings provided
+STITCH_THEMES = {
+    "anodized_blue": ("Stitch_Anodized_Blue", (0.10, 0.45, 0.85, 1.0), 0.25, 0.85),
+    "brushed_titanium": ("Stitch_Brushed_Titanium", (0.62, 0.64, 0.68, 1.0), 0.22, 0.92),
+    "matte_carbon": ("Stitch_Matte_Carbon", (0.12, 0.12, 0.15, 1.0), 0.45, 0.15),
+    "industrial_brass": ("Stitch_Industrial_Brass", (0.85, 0.65, 0.20, 1.0), 0.20, 0.95),
+    "plasma_steel": ("Stitch_Plasma_Steel", (0.35, 0.38, 0.42, 1.0), 0.35, 0.88),
+}
+
+def _parse_system1_params(prompt, settings=None):
+    p = (prompt or "").lower()
     radius = settings.radius if settings else 1.8
     height = settings.height if settings else 4.0
     wall = settings.wall_thickness if settings else 0.25
     shape = settings.shape if settings else "cylinder"
-    
+    theme = "anodized_blue"
+
+    # Extract natural-language numeric overrides (System 1 fast intent parsing)
+    r_m = re.search(r"(?:radius|r)\s*[=:]?\s*(\d+(?:\.\d+)?)", p)
+    if r_m:
+        radius = max(0.4, min(10.0, float(r_m.group(1))))
+    h_m = re.search(r"(?:height|tall|depth|h)\s*[=:]?\s*(\d+(?:\.\d+)?)", p)
+    if h_m:
+        height = max(0.5, min(20.0, float(h_m.group(1))))
+    w_m = re.search(r"(?:wall|thickness)\s*[=:]?\s*(\d+(?:\.\d+)?)", p)
+    if w_m:
+        wall = max(0.05, min(1.0, float(w_m.group(1))))
+
+    if "hex" in p or shape == "hexagon":
+        shape = "hexagon"
+    elif any(k in p for k in ("rect", "square", "box")) or shape == "rectangle":
+        shape = "rectangle"
+
+    if "titanium" in p or "silver" in p:
+        theme = "brushed_titanium"
+    elif "carbon" in p or "black" in p or "matte" in p:
+        theme = "matte_carbon"
+    elif "brass" in p or "gold" in p:
+        theme = "industrial_brass"
+    elif "steel" in p:
+        theme = "plasma_steel"
+
+    if settings:
+        try:
+            settings.radius = radius
+            settings.height = height
+            settings.wall_thickness = wall
+            settings.shape = shape
+        except Exception:
+            pass
+
+    return radius, height, wall, shape, theme
+
+
+def generate_stitch_variations_script(radius=1.6, height=3.8, wall=0.22):
+    """Google Stitch 3-Variant Side-by-Side Canvas Generator."""
+    return f"""import bpy, bmesh, math
+for obj in list(bpy.data.objects):
+    bpy.data.objects.remove(obj, do_unlink=True)
+for col in list(bpy.data.collections):
+    bpy.data.collections.remove(col)
+
+def make_mat(name, color, roughness=0.25, metallic=0.85):
+    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get('Principled BSDF')
+    if bsdf:
+        bsdf.inputs['Base Color'].default_value = color
+        bsdf.inputs['Roughness'].default_value = roughness
+        bsdf.inputs['Metallic'].default_value = metallic
+    return mat
+
+variants = [
+    ("Variant_A_Cylinder", 32, -5.5, make_mat("Stitch_Anodized_Blue", (0.10, 0.45, 0.85, 1.0), 0.25, 0.85)),
+    ("Variant_B_Hexagon", 6, 0.0, make_mat("Stitch_Brushed_Titanium", (0.62, 0.64, 0.68, 1.0), 0.22, 0.92)),
+    ("Variant_C_Rectangle", 4, 5.5, make_mat("Stitch_Industrial_Brass", (0.85, 0.65, 0.20, 1.0), 0.20, 0.95)),
+]
+mat_cap = make_mat("Stitch_Matte_Carbon", (0.12, 0.12, 0.15, 1.0), 0.45, 0.15)
+
+for col_name, verts, x_offset, mat in variants:
+    col = bpy.data.collections.new(col_name)
+    bpy.context.scene.collection.children.link(col)
+
+    bpy.ops.mesh.primitive_cylinder_add(vertices=verts, radius={radius}, depth={height}, location=(x_offset, 0, {height / 2.0}))
+    body = bpy.context.active_object
+    body.name = f"{{col_name}}_Body"
+    body.data.materials.append(mat)
+
+    bpy.ops.mesh.primitive_cylinder_add(vertices=verts, radius={max(0.2, radius - wall)}, depth={max(0.2, height - wall)}, location=(x_offset, 0, {(height / 2.0) + (wall / 2.0)}))
+    cavity = bpy.context.active_object
+    bmod = body.modifiers.new(name="Cavity", type='BOOLEAN')
+    bmod.object = cavity
+    bmod.operation = 'DIFFERENCE'
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.modifier_apply(modifier="Cavity")
+    bpy.data.objects.remove(cavity, do_unlink=True)
+
+    bev = body.modifiers.new(name="StitchBevel", type='BEVEL')
+    bev.width = 0.04
+    bev.segments = 3
+    bpy.ops.object.modifier_apply(modifier="StitchBevel")
+
+    bpy.ops.mesh.primitive_cylinder_add(vertices=verts, radius={radius * 1.05}, depth=0.6, location=(x_offset, 0, {height + 0.8}))
+    lid = bpy.context.active_object
+    lid.name = f"{{col_name}}_Lid"
+    lid.data.materials.append(mat_cap)
+
+    for o in (body, lid):
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+        col.objects.link(o)
+
+bpy.ops.object.camera_add(location=(0.0, -14.0, 9.0), rotation=(math.radians(60), 0, 0))
+bpy.context.scene.camera = bpy.context.active_object
+bpy.ops.object.light_add(type='SUN', location=(5, -8, 12))
+bpy.context.active_object.data.energy = 4.5
+print("[Stitch Brain] Generated 3 side-by-side design variations.")
+"""
+
+
+def run_builtin_cad_engine(prompt, settings=None):
+    p = (prompt or "").lower()
+    radius, height, wall, shape, theme = _parse_system1_params(prompt, settings)
+
+    if any(k in p for k in ("3 variations", "variations", "variants", "compare", "stitch grid")):
+        return generate_stitch_variations_script(radius=radius, height=height, wall=wall)
+
     v = 32
-    if shape == "hexagon" or "hex" in p:
+    if shape == "hexagon":
         v = 6
-    elif shape == "rectangle" or "rect" in p or "square" in p:
+    elif shape == "rectangle":
         v = 4
+
+    t_name, t_col, t_rough, t_met = STITCH_THEMES.get(theme, STITCH_THEMES["anodized_blue"])
 
     lines = [
         "import bpy, bmesh, math",
-        "if bpy.context.object and bpy.context.object.mode != 'OBJECT':",
-        "    bpy.ops.object.mode_set(mode='OBJECT')",
-        "bpy.ops.object.select_all(action='SELECT')",
-        "bpy.ops.object.delete(use_global=False)",
-        """
+        "for o in list(bpy.data.objects): bpy.data.objects.remove(o, do_unlink=True)",
+        f"""
 def make_mat(name, color, roughness=0.3, metallic=0.0):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name=name)
     mat.use_nodes = True
@@ -265,7 +483,7 @@ def make_mat(name, color, roughness=0.3, metallic=0.0):
         bsdf.inputs['Roughness'].default_value = roughness
         bsdf.inputs['Metallic'].default_value = metallic
     return mat
-mat_metal = make_mat('Anodized_Mat', (0.1, 0.45, 0.85, 1.0), roughness=0.25, metallic=0.85)
+mat_metal = make_mat('{t_name}', {t_col}, roughness={t_rough}, metallic={t_met})
 mat_lid = make_mat('Grip_Polymer', (0.15, 0.15, 0.18, 1.0), roughness=0.4, metallic=0.1)
 mat_filter = make_mat('Filter_Mesh', (0.7, 0.7, 0.75, 1.0), roughness=0.3, metallic=0.9)
 """
@@ -343,7 +561,7 @@ bpy.ops.object.camera_add(location=(10.0, -10.0, 8.0), rotation=(math.radians(60
 bpy.context.scene.camera = bpy.context.active_object
 bpy.ops.object.light_add(type='SUN', location=(5, -5, 10))
 bpy.context.active_object.data.energy = 4.0
-print("[CAD Engine] Built modular canister assembly.")
+print("[System 1 Brain] Built modular canister assembly.")
 """)
     elif any(k in p for k in ["bracket", "mount", "langmuir", "cnc", "plate"]):
         lines.append("""
@@ -374,35 +592,35 @@ bpy.ops.object.modifier_apply(modifier="PlateBevel")
 bpy.ops.object.camera_add(location=(0, -8, 7), rotation=(math.radians(50), 0, 0))
 bpy.context.scene.camera = bpy.context.active_object
 bpy.ops.object.light_add(type='SUN', location=(2, -3, 8))
-print("[CAD Engine] Built Langmuir CNC mounting bracket.")
+print("[System 1 Brain] Built Langmuir CNC mounting bracket.")
 """)
     else:
         lines.append(f"""
 # Generic Parametric Generator for: {prompt}
-bpy.ops.mesh.primitive_cylinder_add(radius=2.0, depth=3.0, location=(0, 0, 1.5))
+bpy.ops.mesh.primitive_cylinder_add(vertices={v}, radius={radius}, depth={height}, location=(0, 0, {height / 2.0}))
 obj = bpy.context.active_object
 obj.name = "Generated_Part"
 obj.data.materials.append(mat_metal)
 
 bev = obj.modifiers.new(name="Bevel", type='BEVEL')
-bev.width = 0.1
+bev.width = 0.08
 bev.segments = 3
 bpy.ops.object.modifier_apply(modifier="Bevel")
 
 bpy.ops.object.camera_add(location=(6, -6, 5), rotation=(math.radians(55), 0, math.radians(45)))
 bpy.context.scene.camera = bpy.context.active_object
 bpy.ops.object.light_add(type='SUN', location=(3, -3, 6))
-print("[CAD Engine] Created parametric model.")
+print("[System 1 Brain] Created parametric model.")
 """)
 
     return "\n".join(lines)
 
-# ----------------- Interactive Manufacturing Operators -----------------
+# ----------------- Interactive Stitch & Manufacturing Operators -----------------
 
 class AGENTIC_OT_ExecutePrompt(bpy.types.Operator):
     bl_idname = "agentic.execute_prompt"
     bl_label = "Generate / Execute Prompt"
-    bl_description = "Send prompt to AI and build the 3D model in Blender"
+    bl_description = "Send prompt through Dual-Brain (System 1 + System 2) and build the 3D model"
 
     def execute(self, context):
         settings = context.scene.agentic_settings
@@ -423,23 +641,23 @@ class AGENTIC_OT_ExecutePrompt(bpy.types.Operator):
                 pass
 
             code = ""
-            if settings.engine == 'GEMINI':
-                prefs = context.preferences.addons[__name__].preferences
-                api_key = prefs.gemini_api_key.strip() or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
-                if not api_key:
-                    self.report({'ERROR'}, "Please enter your Gemini API Key in preferences.")
-                    settings.status_msg = "Error: Missing Gemini API Key."
-                    return {'CANCELLED'}
-                raw_resp = call_gemini_api(prompt, api_key)
-                code = extract_python_code(raw_resp)
-
-            elif settings.engine == 'LOCAL_LLM':
-                prefs = context.preferences.addons[__name__].preferences
-                raw_resp = call_local_llm(prompt, prefs.custom_endpoint_url, prefs.local_model_name)
-                code = extract_python_code(raw_resp)
-
-            elif settings.engine == 'CAD_ENGINE':
+            if settings.engine == 'CAD_ENGINE':
                 code = run_builtin_cad_engine(prompt, settings)
+            else:
+                # System 1 parses intent parameters first
+                _parse_system1_params(prompt, settings)
+                prefs_addon = context.preferences.addons.get(__name__)
+                prefs = prefs_addon.preferences if prefs_addon else None
+                explicit_key = prefs.gemini_api_key.strip() if prefs else ""
+                endpoint_url = prefs.custom_endpoint_url.strip() if prefs else ""
+                raw_resp = call_universal_llm(
+                    provider=settings.engine,
+                    prompt=prompt,
+                    model_name=settings.model_name,
+                    api_key=explicit_key,
+                    endpoint_url=endpoint_url,
+                )
+                code = extract_python_code(raw_resp)
 
             settings.last_code = code
 
@@ -452,8 +670,8 @@ class AGENTIC_OT_ExecutePrompt(bpy.types.Operator):
             }
             exec(code, scope)
 
-            settings.status_msg = "Success! 3D model generated."
-            add_log(f"Prompt executed: '{prompt[:35]}...'")
+            settings.status_msg = f"Success! ({settings.engine})"
+            add_log(f"Prompt executed ({settings.engine}): '{prompt[:30]}...'")
             self.report({'INFO'}, "Model successfully created!")
             return {'FINISHED'}
 
@@ -463,6 +681,105 @@ class AGENTIC_OT_ExecutePrompt(bpy.types.Operator):
             add_log(f"Execution Error: {err}")
             self.report({'ERROR'}, f"Agentic Error: {err}")
             return {'CANCELLED'}
+
+
+class AGENTIC_OT_StitchVariations(bpy.types.Operator):
+    bl_idname = "agentic.stitch_variations"
+    bl_label = "Stitch 3 Variations"
+    bl_description = "Generate 3 side-by-side design variations (Cylinder, Hexagon, Rectangle) on the canvas"
+
+    def execute(self, context):
+        settings = context.scene.agentic_settings
+        try:
+            bpy.ops.ed.undo_push(message="Stitch 3 Variations")
+        except Exception:
+            pass
+        code = generate_stitch_variations_script(
+            radius=settings.radius,
+            height=settings.height,
+            wall=settings.wall_thickness,
+        )
+        settings.last_code = code
+        exec(code, {"bpy": bpy, "C": bpy.context, "D": bpy.data})
+        settings.status_msg = "Generated 3 Stitch variations side-by-side!"
+        self.report({'INFO'}, "Generated 3 Stitch design variations!")
+        return {'FINISHED'}
+
+
+class AGENTIC_OT_StitchChip(bpy.types.Operator):
+    bl_idname = "agentic.stitch_chip"
+    bl_label = "Apply Stitch Refinement Chip"
+    bl_description = "1-click Stitch geometry or material vibe refinement"
+
+    action: bpy.props.StringProperty()
+
+    def execute(self, context):
+        act = (self.action or "").lower().strip()
+        try:
+            bpy.ops.ed.undo_push(message=f"Stitch Chip: {act}")
+        except Exception:
+            pass
+
+        meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+        target = context.active_object if (context.active_object and context.active_object.type == 'MESH') else (meshes[0] if meshes else None)
+
+        if act == "explode":
+            for idx, obj in enumerate(sorted(meshes, key=lambda o: o.name)):
+                obj.location.x = 0.0
+                obj.location.y = 0.0
+                obj.location.z = idx * 2.5 + 0.5
+            context.scene.agentic_settings.status_msg = "Applied Exploded Assembly View."
+        elif act == "assemble":
+            for idx, obj in enumerate(sorted(meshes, key=lambda o: o.name)):
+                obj.location.x = (idx - (len(meshes) - 1) / 2.0) * 4.0
+                obj.location.y = 0.0
+                obj.location.z = max(0.35, obj.dimensions.z / 2.0)
+            context.scene.agentic_settings.status_msg = "Arranged flat bed layout."
+        elif act == "chamfer" and target:
+            context.view_layer.objects.active = target
+            bev = target.modifiers.new(name="Stitch_Chamfer", type='BEVEL')
+            bev.width = 0.05
+            bev.segments = 3
+            bpy.ops.object.modifier_apply(modifier=bev.name)
+            context.scene.agentic_settings.status_msg = f"Chamfered {target.name}."
+        elif act == "hollow" and target:
+            context.view_layer.objects.active = target
+            sol = target.modifiers.new(name="Stitch_Shell", type='SOLIDIFY')
+            sol.thickness = -0.18
+            bpy.ops.object.modifier_apply(modifier=sol.name)
+            context.scene.agentic_settings.status_msg = f"Hollowed {target.name}."
+        elif act == "bolt_pattern" and target:
+            cx, cy, cz = target.location.x, target.location.y, target.location.z
+            r_bolt = max(0.7, min(target.dimensions.x, target.dimensions.y) * 0.35)
+            for i in range(6):
+                ang = i * (2 * math.pi / 6)
+                hx = cx + r_bolt * math.cos(ang)
+                hy = cy + r_bolt * math.sin(ang)
+                bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=target.dimensions.z + 1.0, location=(hx, hy, cz))
+                hole = context.active_object
+                bmod = target.modifiers.new(name=f"Bolt_{i}", type='BOOLEAN')
+                bmod.object = hole
+                bmod.operation = 'DIFFERENCE'
+                context.view_layer.objects.active = target
+                bpy.ops.object.modifier_apply(modifier=bmod.name)
+                bpy.data.objects.remove(hole, do_unlink=True)
+            context.scene.agentic_settings.status_msg = f"Added 6-bolt pattern to {target.name}."
+        elif act.startswith("theme:"):
+            theme_key = act.split(":", 1)[1]
+            t_name, t_col, t_rough, t_met = STITCH_THEMES.get(theme_key, STITCH_THEMES["anodized_blue"])
+            mat = bpy.data.materials.get(t_name) or bpy.data.materials.new(name=t_name)
+            mat.use_nodes = True
+            bsdf = mat.node_tree.nodes.get('Principled BSDF')
+            if bsdf:
+                bsdf.inputs['Base Color'].default_value = t_col
+                bsdf.inputs['Roughness'].default_value = t_rough
+                bsdf.inputs['Metallic'].default_value = t_met
+            for o in meshes:
+                o.data.materials.clear()
+                o.data.materials.append(mat)
+            context.scene.agentic_settings.status_msg = f"Applied theme: {t_name}"
+
+        return {'FINISHED'}
 
 class AGENTIC_OT_Check3DPrint(bpy.types.Operator):
     bl_idname = "agentic.check_3dprint"
@@ -803,15 +1120,16 @@ def draw_agentic_topbar(self, context):
         return
     settings = context.scene.agentic_settings
 
-    # Prominent on-screen Agent Prompt Bar
+    # Prominent on-screen Stitch Agent Prompt Bar
     row = layout.row(align=True)
-    row.label(text="🤖 Agent:", icon='FORCE_BOID')
+    row.label(text="🤖 Stitch:", icon='FORCE_BOID')
 
     sub = row.row(align=True)
     sub.scale_x = 2.2
     sub.prop(settings, "prompt", text="")
 
     row.operator("agentic.execute_prompt", text="✨ Generate", icon='PLAY')
+    row.operator("agentic.stitch_variations", text="3 Variants", icon='MOD_ARRAY')
     row.operator("agentic.prompt_modal", text="", icon='WINDOW')
     row.menu("AGENTIC_MT_CollectionsMenu", text="", icon='OUTLINER_COLLECTION')
     row.menu("AGENTIC_MT_ManufacturingMenu", text="", icon='TOOL_SETTINGS')
@@ -826,21 +1144,31 @@ def draw_agentic_sidebar_ui(layout, context):
     prefs_addon = context.preferences.addons.get(__name__)
     prefs = prefs_addon.preferences if prefs_addon else None
 
-    # 1. Main Prompt Section
+    # 1. Main Stitch Prompt & Dual-Brain Section
     box1 = layout.box()
-    box1.label(text="🤖 Blender Agent Prompt-to-3D:", icon='FORCE_BOID')
+    box1.label(text="🤖 Blender Stitch Studio (System 1+2):", icon='FORCE_BOID')
     box1.prop(settings, "prompt", text="")
-    box1.prop(settings, "engine", text="Engine")
+    box1.prop(settings, "engine", text="Brain")
 
-    if settings.engine == 'GEMINI' and prefs and not prefs.gemini_api_key.strip():
-        alert_box = box1.box()
-        alert_box.alert = True
-        alert_box.label(text="Gemini Key Required:", icon='KEYINGSET')
-        alert_box.prop(prefs, "gemini_api_key", text="API Key")
+    if settings.engine != 'CAD_ENGINE':
+        box1.prop(settings, "model_name", text="Model")
+        if prefs:
+            if settings.engine == 'LOCAL_LLM':
+                box1.prop(prefs, "custom_endpoint_url", text="URL")
+            else:
+                resolved = resolve_api_key(settings.engine, prefs.gemini_api_key)
+                if not resolved:
+                    alert_box = box1.box()
+                    alert_box.alert = True
+                    alert_box.label(text=f"{settings.engine} API Key Required:", icon='KEYINGSET')
+                    alert_box.prop(prefs, "gemini_api_key", text="API Key")
+                else:
+                    box1.prop(prefs, "gemini_api_key", text="API Key")
 
     row = box1.row(align=True)
-    row.scale_y = 1.5
-    row.operator("agentic.execute_prompt", text="✨ Generate 3D Model", icon='PLAY')
+    row.scale_y = 1.45
+    row.operator("agentic.execute_prompt", text="✨ Generate", icon='PLAY')
+    row.operator("agentic.stitch_variations", text="🔀 3 Variations", icon='MOD_ARRAY')
 
     # Quick Presets
     p_row1 = box1.row(align=True)
@@ -855,10 +1183,26 @@ def draw_agentic_sidebar_ui(layout, context):
     op4 = p_row2.operator("agentic.set_quick_prompt", text="Rect Dispenser")
     op4.preset_text = "Modular rectangular powder dispenser with knurled lid and filter"
 
+    # 1B. Google Stitch Refinement & Vibe Chips
+    box_chips = layout.box()
+    box_chips.label(text="⚡ Stitch Refinement & Vibe Chips:", icon='MODIFIER_DATA')
+    c_row1 = box_chips.row(align=True)
+    c_row1.operator("agentic.stitch_chip", text="Explode", icon='FULLSCREEN_ENTER').action = "explode"
+    c_row1.operator("agentic.stitch_chip", text="Flat Bed", icon='GRID').action = "assemble"
+    c_row1.operator("agentic.stitch_chip", text="Chamfer", icon='MOD_BEVEL').action = "chamfer"
+    c_row2 = box_chips.row(align=True)
+    c_row2.operator("agentic.stitch_chip", text="Hollow", icon='MOD_SOLIDIFY').action = "hollow"
+    c_row2.operator("agentic.stitch_chip", text="6-Bolt", icon='MOD_BOOLEAN').action = "bolt_pattern"
+    t_row = box_chips.row(align=True)
+    t_row.operator("agentic.stitch_chip", text="Anodized", icon='MATERIAL').action = "theme:anodized_blue"
+    t_row.operator("agentic.stitch_chip", text="Titanium", icon='MATERIAL').action = "theme:brushed_titanium"
+    t_row.operator("agentic.stitch_chip", text="Carbon", icon='MATERIAL').action = "theme:matte_carbon"
+    t_row.operator("agentic.stitch_chip", text="Brass", icon='MATERIAL').action = "theme:industrial_brass"
+
     # 2. Scene Collections & Objects (Full Control)
     box_col = layout.box()
     row_hdr = box_col.row(align=True)
-    row_hdr.label(text=f"Scene Objects ({len(bpy.data.objects)}) & Collections:", icon='OUTLINER_COLLECTION')
+    row_hdr.label(text=f"Scene Layers ({len(bpy.data.objects)} obj):", icon='OUTLINER_COLLECTION')
     row_hdr.operator("agentic.create_smart_collections", text="Auto-Group", icon='FILE_NEW')
 
     cols = list(bpy.data.collections)
@@ -877,7 +1221,7 @@ def draw_agentic_sidebar_ui(layout, context):
 
     # 3. Parametric Modular Assembly Builder
     box2 = layout.box()
-    box2.label(text="Modular CAD Parameters:", icon='TOOL_SETTINGS')
+    box2.label(text="DESIGN.md CAD Tokens:", icon='TOOL_SETTINGS')
     box2.prop(settings, "shape", text="Base Shape")
     col = box2.column(align=True)
     col.prop(settings, "radius", text="Radius (in)")
@@ -894,7 +1238,7 @@ def draw_agentic_sidebar_ui(layout, context):
     
     # 3D Print row
     b_print = box3.box()
-    b_print.label(text="3D Printing Pre-Flight:", icon='PRINTER')
+    b_print.label(text="3D Printing Pre-Flight:", icon='FILE_3D')
     row_p = b_print.row(align=True)
     row_p.prop(settings, "printer_profile", text="")
     row_p.prop(settings, "print_material", text="")
@@ -920,7 +1264,7 @@ def draw_agentic_sidebar_ui(layout, context):
 
 
 class AGENTIC_PT_MainPanel(bpy.types.Panel):
-    bl_label = "Blender Agent Studio"
+    bl_label = "Blender Stitch Studio"
     bl_idname = "AGENTIC_PT_main_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -946,7 +1290,7 @@ def _make_props_panel(ctx_name):
         f"AGENTIC_PT_props_{ctx_name}",
         (bpy.types.Panel,),
         {
-            "bl_label": "Blender Agent Studio",
+            "bl_label": "Blender Stitch Studio",
             "bl_idname": f"AGENTIC_PT_props_{ctx_name}",
             "bl_space_type": 'PROPERTIES',
             "bl_region_type": 'WINDOW',
@@ -1106,6 +1450,8 @@ classes = (
     AgenticAddonPreferences,
     AgenticSceneSettings,
     AGENTIC_OT_ExecutePrompt,
+    AGENTIC_OT_StitchVariations,
+    AGENTIC_OT_StitchChip,
     AGENTIC_OT_Check3DPrint,
     AGENTIC_OT_Export3DPrint,
     AGENTIC_OT_ExportCNC,
@@ -1122,10 +1468,17 @@ classes = (
 
 addon_keymaps = []
 
+def _get_active_screens():
+    wm = getattr(bpy.context, "window_manager", None)
+    screens = [w.screen for w in wm.windows if getattr(w, "screen", None)] if wm else []
+    if not screens and getattr(bpy.context, "screen", None):
+        screens = [bpy.context.screen]
+    return screens
+
 def enforce_canvas_ui_once():
     try:
         hide_builtin_clutter_panels()
-        for scr in bpy.data.screens:
+        for scr in _get_active_screens():
             has_props = any(a.type == 'PROPERTIES' for a in scr.areas)
             for area in scr.areas:
                 if area.type == 'VIEW_3D':
@@ -1153,7 +1506,7 @@ def register():
         pass
 
     wm = bpy.context.window_manager
-    kc = wm.keyconfigs.addon
+    kc = wm.keyconfigs.addon if wm else None
     if kc:
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         kmi = km.keymap_items.new(AGENTIC_OT_PromptModal.bl_idname, 'A', 'PRESS', alt=True, shift=True)
@@ -1175,7 +1528,7 @@ def unregister():
         bpy.app.timers.unregister(process_tasks_timer)
 
     wm = bpy.context.window_manager
-    kc = wm.keyconfigs.addon
+    kc = wm.keyconfigs.addon if wm else None
     if kc:
         for km, kmi in addon_keymaps:
             km.keymap_items.remove(kmi)
