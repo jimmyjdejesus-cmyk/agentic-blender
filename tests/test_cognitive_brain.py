@@ -107,3 +107,20 @@ def test_full_application_data_flow():
     assert "G38.2" in cnc_res["gcode"]
     assert "H1" in cnc_res["gcode"]
     assert "M30" in cnc_res["gcode"]
+
+
+def test_jev_system1_decision_primitives_and_router():
+    """Verify TypeSafe AI Jev System-1 Decision Primitives (Choice, Boolean Gate, Calibrated Score) & router."""
+    from agentic_blender.llm.router import DEFAULT_MODELS, PROVIDER_ENDPOINTS
+
+    assert DEFAULT_MODELS["JEV_ROUTER"] == "typesafe/jev-router"
+    assert "openrouter.ai" in PROVIDER_ENDPOINTS["JEV_ROUTER"]
+
+    intent = System1Brain.parse_intent("Create 3 variations of a modular canister with helical threads")
+    assert intent.jev.selected_choice == "canister"
+    assert intent.jev.choice_probs["canister"] == 0.85
+    assert intent.jev.boolean_gates["is_3_variant_grid"] == "YES"
+    assert intent.jev.boolean_gates["route_to_system2"] == "YES"
+    assert intent.jev.complexity_score >= 0.8
+    assert intent.jev.confidence_score > 0.9
+
