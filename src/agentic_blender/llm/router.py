@@ -19,6 +19,7 @@ import urllib.error
 import urllib.request
 
 DEFAULT_MODELS = {
+    "JEV_ROUTER": "typesafe/jev-router",
     "OPENROUTER": "anthropic/claude-3.7-sonnet",
     "GEMINI": "gemini-2.5-flash",
     "ANTHROPIC": "claude-3-7-sonnet-latest",
@@ -29,6 +30,7 @@ DEFAULT_MODELS = {
 }
 
 PROVIDER_ENDPOINTS = {
+    "JEV_ROUTER": "https://openrouter.ai/api/v1/chat/completions",
     "OPENROUTER": "https://openrouter.ai/api/v1/chat/completions",
     "OPENAI_COMPAT": "https://api.openai.com/v1/chat/completions",
     "DEEPSEEK": "https://api.deepseek.com/v1/chat/completions",
@@ -38,6 +40,7 @@ PROVIDER_ENDPOINTS = {
 }
 
 ENV_KEY_MAP = {
+    "JEV_ROUTER": ("JEV_API_KEY", "OPENROUTER_API_KEY"),
     "OPENROUTER": ("OPENROUTER_API_KEY",),
     "GEMINI": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     "ANTHROPIC": ("ANTHROPIC_API_KEY",),

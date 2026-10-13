@@ -79,11 +79,26 @@ if windows and windows[0] is not None:
             except Exception as e:
                 print(f"[Agentic Setup] Area close note ({area.type}): {e}")
 
-# 7. Enable agentic_blender add-on in user preferences
+# 7. Apply Google Stitch Visual Theme (Deep Slate-Indigo Canvas Gradient + Electric Blue UI Accents)
+try:
+    prefs = bpy.context.preferences
+    prefs.view.show_splash = False
+    theme = prefs.themes[0]
+    grad = theme.view_3d.space.gradients
+    grad.background_type = 'LINEAR'
+    grad.gradient = (0.04, 0.05, 0.09)
+    grad.high_gradient = (0.09, 0.14, 0.24)
+    theme.user_interface.wcol_regular.inner_sel = (0.10, 0.45, 0.92, 1.0)
+    theme.user_interface.wcol_tool.inner = (0.10, 0.42, 0.88, 1.0)
+    theme.user_interface.wcol_box.inner = (0.07, 0.09, 0.15, 0.96)
+except Exception as e:
+    print(f"[Agentic Setup] Theme customization note: {e}")
+
+# 8. Enable agentic_blender add-on in user preferences
 addon_utils.enable("agentic_blender", default_set=True)
 bpy.ops.wm.save_userpref()
 
-# 8. Save as default startup file
+# 9. Save as default startup file
 bpy.ops.wm.save_homefile()
 
 # 9. Also install as a native Blender Application Template ('Agentic_Stitch')
